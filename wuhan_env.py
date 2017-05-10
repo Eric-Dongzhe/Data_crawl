@@ -151,7 +151,7 @@ logger = logging.basicConfig(level=logging.INFO,
 if __name__ == "__main__":
     s_date = "2005/02/01"  # 开始日期
     e_date = "2017/07/01"  # 截至日期
-    table_titles = ['日期', '监测单位', '二氧化硫', '二氧化氮', '可吸入颗粒物', '臭氧', '细颗粒物', '空气质量指数', '首要污染物', 'AQI指数级别', 'AQI指数类别']
+    table_titles = ['日期', '监测单位', '二氧化硫', '二氧化氮', '一氧化氮', '可吸入颗粒物', '臭氧', '细颗粒物', '空气质量指数', '首要污染物', 'AQI指数级别', 'AQI指数类别']
     target_file = u"{}_{}_{}.csv".format("武汉市环保局空气质量日报", s_date[:4], e_date[:4])
     init_csv(target_file, table_titles)
     crawl(start_date=s_date, end_date=e_date, file_name=target_file)
