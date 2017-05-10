@@ -1,0 +1,133 @@
+# coding=utf-8
+"""
+采集中国环保部官网各市空气质量小时数据，自动生成：城市名_start_date_end_date.csv 文件
+"""
+import codecs
+import copy
+
+import requests
+from lxml import etree
+import csv
+import logging
+from datetime import datetime as DTime
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
+
+import proxy_manager
+
+HEADERS = {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate",
+    "Accept-Language": "zh-cn,zh;q=0.8,en-us;q=0.5,en;q=0.3",
+    "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:42.0) Gecko/20100101 Firefox/42.0",
+    "Host": "datacenter.mep.gov.cn:8099",
+    "Referer": "http://datacenter.mep.gov.cn:8099/ths-report/report!list.action"
+}
+
+url = "http://datacenter.mep.gov.cn:8099/ths-report/report!list.action"
+params = {
+    "CITY": "武汉",
+    "VS_DATE": "2015-02-05 02:00:00",
+    "VE_DATE": "2017-04-20 11:00:00",
+    "page.pageNo": "1",
+    "xmlname": "1462261004631",
+    "isdesignpatterns":"fasle"
+
+}
+
+logger = logging.basicConfig(level=logging.INFO,
+                                 format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+                                 filename="air_quality.log",
+                                 filemode='a+')
+
+def get_data_list(resp):
+    content = resp.content.decode('utf-8')
+    root = etree.HTML(content)
+    nodes_list = root.xpath('//tr[@onmouseover]')
+    target_data = {}
+    data_list = []
+    for node in nodes_list:
+        target_data['city'] = node.xpath('td[3]/@title')[0]
+        target_data['AQI_index'] = node.xpath('td[4]/@title')[0]
+        target_data['main_polution'] = node.xpath('td[5]/@title')[0]
+        target_data['period_date'] = node.xpath('td[7]/@title')[0]
+        target_data['level'] = node.xpath('td[9]/@title')[0]
+        insert_data = copy.deepcopy(target_data)
+        data_list.append(insert_data)
+    return data_list
+
+
+def crawl_city(city_name, start_date, end_date, page_nums):
+    """
+
+    :param city_name: 例如： 武汉
+    :param start_date: 例如"2015-02-05 02:00:00"
+    :param end_date:
+    :return:
+    """
+    file_name = u"{}_{}_{}.csv".format(city_name, start_date[:10], end_date[:10])
+    table_titles = ['城市', 'AQI指数', '首要污染物', '日期', '空气质量级别']
+    init_csv(file_name, table_titles)
+    # csvfile = file(file_name, 'a')
+    # csvfile.write(codecs.BOM_UTF8)
+    # writer = csv.writer(csvfile)
+
+    try:
+        page = 1
+        while page <= page_nums:
+            csvfile = file(file_name, 'ab')
+            csvfile.write(codecs.BOM_UTF8)
+            writer = csv.writer(csvfile)
+            params['CITY'] = city_name
+            params['page.pageNo'] = page
+            params['VS_DATE'] = start_date
+            params['VE_DATE'] = end_date
+
+            logging.info("accessing city:{},start_date:{}, end_date:{}, page:{}".format(city_name, s_date, e_date, page))
+            print "accessing city:{},start_date:{}, end_date:{}, page:{}".format(city_name, s_date, e_date, page)
+            ip = proxy_manager.get_proxyip()
+            proxy = {'http': "http://{}:{}".format(ip["host"].encode("UTF-8"), ip["port"])}
+            resp = requests.post(url, proxies=proxy, params=params, headers=HEADERS)
+            # resp = requests.post(url, params=params, headers=HEADERS)
+            items = get_data_list(resp)
+            if items is None:
+                logging.info("no more pages")
+                break
+            for item in items:
+                city = item.get('city', '')
+                aqi_idex = item.get('AQI_index', '')
+                main_polu = item.get('main_polution', '')
+                period_date = item.get('period_date') # 2/3/2015 18:0:0
+                period_date = DTime.strptime(item['period_date'], "%m/%d/%Y %H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+                level = item.get('level', '')
+
+                logging.info("write item:{} in to file:{}".format(item, file_name))
+                writer.writerow((city, aqi_idex, main_polu, period_date, level))
+            csvfile.close()
+            page += 1
+    except Exception as e:
+        logging.error('unknow exception with: {}'.format(e))
+    except (KeyboardInterrupt, SystemExit):
+        print "interrupted"
+        csvfile.close()
+    finally:
+        csvfile.close()
+
+
+def init_csv(file_name, titles):
+    csvfile = file(file_name, 'w')
+    csvfile.write(codecs.BOM_UTF8)
+    writer = csv.writer(csvfile)
+    writer.writerow(titles)
+    csvfile.close()
+
+if __name__ == "__main__":
+
+    # table_titles = ['城市', 'AQI指数', '首要污染物', '日期', '空气质量级别']
+    # init_csv(u'武汉_-2016.csv', table_titles)
+    city_name = u"武汉"  # 城市名
+    s_date = "2015-02-01"  # 开始日期
+    e_date = "2017-07-01"  # 截至日期
+    pages = 645  # 网站先期查到所有页数
+    crawl_city(city_name, start_date=s_date, end_date=e_date, page_nums=pages)
